@@ -30,6 +30,7 @@ const express = require('express');
 // imported via CommonJS require you must access the `.default` property
 // to get the actual fetch function.  See the module’s README for
 // details.
+const fetch = require('node-fetch').default;
 const fs = require('fs/promises');
 const path = require('path');
 
@@ -67,6 +68,29 @@ async function fetchGameData(universeId) {
   const visits = typeof game.visits === 'number' ? game.visits : 0;
   const playing = typeof game.playing === 'number' ? game.playing : 0;
   return { visits, playing };
+}
+
+/**
+ * Fetch vote data (upVotes and downVotes) for a given universe.  The
+ * Games API provides a `/v1/games/votes?universeIds=<id>` endpoint that
+ * returns an object containing the counts of upvotes and downvotes for
+ * each universe ID【445672972853798†L161-L173】.  These counts are used to
+ * compute the like ratio.
+ *
+ * @param {number} universeId
+ * @returns {Promise<{upVotes: number, downVotes: number}>}
+ */
+async function fetchGameVotes(universeId) {
+  const votesUrl = `https://games.roblox.com/v1/games/votes?universeIds=${universeId}`;
+  const response = await fetch(votesUrl);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch vote data for ${universeId}: ${response.status}`);
+  }
+  const body = await response.json();
+  const info = body.data && body.data[0];
+  const upVotes = info && typeof info.upVotes === 'number' ? info.upVotes : 0;
+  const downVotes = info && typeof info.downVotes === 'number' ? info.downVotes : 0;
+  return { upVotes, downVotes };
 }
 
 /**
@@ -127,15 +151,45 @@ function computeGrowth(current, previous) {
 async function recordData(universeId) {
   try {
     const { visits, playing } = await fetchGameData(universeId);
+    const { upVotes, downVotes } = await fetchGameVotes(universeId);
     const now = new Date().toISOString();
     const data = await loadData(universeId);
     const last = data[data.length - 1];
+    // Compute growth percentages relative to the previous sample
     const visitsGrowth = last ? computeGrowth(visits, last.visits) : 0;
     const playingGrowth = last ? computeGrowth(playing, last.playing) : 0;
-    const sample = { timestamp: now, visits, playing, visitsGrowth, playingGrowth };
+    // Compute like ratio: percentage of upvotes out of total votes
+    const totalVotes = upVotes + downVotes;
+    const likeRatio = totalVotes > 0 ? (upVotes / totalVotes) * 100 : 0;
+    // Estimate session time in minutes based on the difference in visits and players
+    let sessionTimeEstimate = 0;
+    if (last) {
+      const lastTime = new Date(last.timestamp);
+      const nowTime = new Date(now);
+      const minutesDiff = (nowTime - lastTime) / 1000 / 60;
+      const avgPlayers = (last.playing + playing) / 2;
+      const newVisits = visits - last.visits;
+      if (newVisits > 0 && avgPlayers > 0) {
+        sessionTimeEstimate = (avgPlayers * minutesDiff) / newVisits;
+      }
+    }
+    const sample = {
+      timestamp: now,
+      visits,
+      playing,
+      upVotes,
+      downVotes,
+      likeRatio,
+      visitsGrowth,
+      playingGrowth,
+      sessionTimeEstimate,
+    };
     data.push(sample);
     await saveData(universeId, data);
-    console.log(`[${now}] Recorded data for universe ${universeId}: visits=${visits}, playing=${playing}`);
+    console.log(
+      `[${now}] Recorded data for universe ${universeId}: visits=${visits}, playing=${playing}, ` +
+        `likes=${upVotes}, dislikes=${downVotes}, ratio=${likeRatio.toFixed(2)}%`
+    );
   } catch (err) {
     console.error(`Error recording data for universe ${universeId}:`, err);
   }
