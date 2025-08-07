@@ -32,6 +32,7 @@ const express = require('express');
 // details.
 const fs = require('fs/promises');
 const path = require('path');
+const cors = require('cors');
 
 const { universeIds, fetchIntervalMinutes } = require('./config');
 
@@ -219,6 +220,7 @@ startTracking().catch((err) => console.error('Failed to start tracking:', err));
 // Express server configuration
 const app = express();
 app.use(express.json());
+app.use(cors());
 // Serve static assets from the public directory
 app.use(express.static(path.join(__dirname, 'public')));
 
