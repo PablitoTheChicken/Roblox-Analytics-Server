@@ -221,6 +221,6 @@ app.get('/api/growth/:id', async (req, res) => {
 
 // Start the Express server
 const port = process.env.PORT || 3000;
-app.listen(port, () => {
-  console.log(`Roblox analytics server is running on http://localhost:${port}`);
+app.listen(port, '192.168.1.98', () => {
+  console.log(`Roblox analytics server is running on http://192.168.1.98:${port}`);
 });
