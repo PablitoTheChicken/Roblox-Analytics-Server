@@ -30,7 +30,6 @@ const express = require('express');
 // imported via CommonJS require you must access the `.default` property
 // to get the actual fetch function.  See the module’s README for
 // details.
-const fetch = require('node-fetch').default;
 const fs = require('fs/promises');
 const path = require('path');
 
